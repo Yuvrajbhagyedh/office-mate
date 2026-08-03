@@ -31,7 +31,20 @@ async def ask(
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:  # noqa: BLE001
         logger.exception("Query failed")
-        raise HTTPException(status_code=500, detail=f"Query failed: {exc}")
+        msg = str(exc)
+        lower = msg.lower()
+        if any(
+            token in lower
+            for token in ("503", "high demand", "unavailable", "overloaded", "429", "busy")
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="The assistant is busy right now. Please try again in a moment.",
+            )
+        raise HTTPException(
+            status_code=500,
+            detail="Something went wrong answering that. Please try again.",
+        )
 
     logger.info(
         "Answered question",

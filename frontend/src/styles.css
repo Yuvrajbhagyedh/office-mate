@@ -754,21 +754,24 @@ a {
 
 .qa {
   animation: rise 380ms ease both;
+  text-align: left;
 }
 
 .q {
   font-family: var(--display);
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   margin-bottom: 10px;
+  color: var(--ink);
 }
 
 .a {
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: linear-gradient(180deg, #fbfcfd, #f7fafb);
-  padding: 14px 16px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f7fbfa);
+  padding: 16px 18px;
+  box-shadow: 0 6px 18px rgba(16, 24, 32, 0.04);
 }
 
 .a.ungrounded {
@@ -776,18 +779,44 @@ a {
   border-color: #eadfc8;
 }
 
+.answerbody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .answertext {
   margin: 0;
-  line-height: 1.65;
-  white-space: pre-wrap;
+  line-height: 1.7;
   color: var(--ink-soft);
-  font-size: 15px;
+  font-size: 15.5px;
+}
+
+.answertext strong {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.answerlist {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+
+.answerlist li::marker {
+  color: var(--accent-bright);
 }
 
 .citemark {
   color: var(--accent);
   font-weight: 700;
   font-size: 0.75em;
+  margin-left: 2px;
 }
 
 .refusal {
@@ -917,8 +946,21 @@ a {
 .error-box {
   border: 1px solid #f0c9c5;
   background: var(--danger-soft);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.error-box strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.error-box p {
+  margin: 0;
+  color: #7a2e28;
+  line-height: 1.45;
+  font-size: 13.5px;
 }
 
 .muted {

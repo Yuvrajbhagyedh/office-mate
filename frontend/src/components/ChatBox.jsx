@@ -3,20 +3,99 @@ import { api } from "../api.js";
 import Citations from "./Citations.jsx";
 import ContextInspector from "./ContextInspector.jsx";
 
+function friendlyError(raw) {
+  const msg = String(raw || "");
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes("503") ||
+    lower.includes("high demand") ||
+    lower.includes("unavailable") ||
+    lower.includes("overloaded") ||
+    lower.includes("busy") ||
+    lower.includes("429") ||
+    lower.includes("rate") ||
+    lower.includes("try again")
+  ) {
+    return "The assistant is busy right now. Please try again in a moment.";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("network")) {
+    return "Couldn’t reach the server. Please try again.";
+  }
+  // Strip ugly JSON blobs from provider errors.
+  if (lower.includes("google gemini") || lower.includes("query failed")) {
+    return "Something went wrong answering that. Please try again.";
+  }
+  return msg.length > 160 ? "Something went wrong. Please try again." : msg;
+}
+
+function renderInline(text, keyPrefix) {
+  // Split on [n] citations and **bold**
+  const parts = text.split(/(\[\d+\]|\*\*[^*]+\*\*)/g).filter(Boolean);
+  return parts.map((part, i) => {
+    const key = `${keyPrefix}-${i}`;
+    if (/^\[\d+\]$/.test(part)) {
+      return (
+        <sup className="citemark" key={key}>
+          {part}
+        </sup>
+      );
+    }
+    if (/^\*\*[^*]+\*\*$/.test(part)) {
+      return <strong key={key}>{part.slice(2, -2)}</strong>;
+    }
+    return <span key={key}>{part}</span>;
+  });
+}
+
 function AnswerText({ text }) {
-  const parts = text.split(/(\[\d+\])/g);
+  const lines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .split("\n");
+
+  const blocks = [];
+  let list = null;
+
+  function flushList() {
+    if (list?.length) {
+      blocks.push({ type: "ul", items: list });
+      list = null;
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushList();
+      continue;
+    }
+    const bullet = trimmed.match(/^([-*•]|\d+\.)\s+(.*)$/);
+    if (bullet) {
+      list = list || [];
+      list.push(bullet[2]);
+      continue;
+    }
+    flushList();
+    blocks.push({ type: "p", text: trimmed });
+  }
+  flushList();
+
   return (
-    <p className="answertext">
-      {parts.map((p, i) =>
-        /^\[\d+\]$/.test(p) ? (
-          <sup className="citemark" key={i}>
-            {p}
-          </sup>
+    <div className="answerbody">
+      {blocks.map((b, i) =>
+        b.type === "ul" ? (
+          <ul className="answerlist" key={i}>
+            {b.items.map((item, j) => (
+              <li key={j}>{renderInline(item, `l${i}-${j}`)}</li>
+            ))}
+          </ul>
         ) : (
-          <span key={i}>{p}</span>
+          <p className="answertext" key={i}>
+            {renderInline(b.text, `p${i}`)}
+          </p>
         )
       )}
-    </p>
+    </div>
   );
 }
 
@@ -46,7 +125,9 @@ export default function ChatBox({
       const response = await api.ask(q, selected);
       setHistory((h) => h.map((it) => (it === entry ? { question: q, response } : it)));
     } catch (err) {
-      setHistory((h) => h.map((it) => (it === entry ? { question: q, error: err.message } : it)));
+      setHistory((h) =>
+        h.map((it) => (it === entry ? { question: q, error: friendlyError(err.message) } : it))
+      );
     } finally {
       setBusy(false);
     }
@@ -98,8 +179,15 @@ export default function ChatBox({
         {history.map((it, idx) => (
           <article className="qa" key={idx}>
             <div className="q">{it.question}</div>
-            {it.loading && <div className="a muted loading">Retrieving · reranking · generating</div>}
-            {it.error && <div className="a error-box">{it.error}</div>}
+            {it.loading && (
+              <div className="a muted loading">Looking through your documents…</div>
+            )}
+            {it.error && (
+              <div className="a error-box">
+                <strong>Couldn’t answer that</strong>
+                <p>{it.error}</p>
+              </div>
+            )}
             {it.response && (
               <div className={`a ${it.response.grounded ? "" : "ungrounded"}`}>
                 {!it.response.grounded && (
