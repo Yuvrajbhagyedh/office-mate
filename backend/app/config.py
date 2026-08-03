@@ -7,9 +7,9 @@ variables are injected by the orchestrator (Docker Compose, k8s, etc.).
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import List
+from typing import List, Union
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,7 +27,25 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     api_host: str = Field(default="0.0.0.0")
     api_port: int = Field(default=8000)
-    cors_origins: List[str] = Field(default=["http://localhost:5173", "http://localhost:3000"])
+    # Accept JSON list, comma-separated, or a single origin string from env.
+    cors_origins: List[str] = Field(
+        default=["http://localhost:5173", "http://localhost:3000", "https://office-mate-five.vercel.app"]
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: Union[str, List[str], None]) -> List[str]:
+        if value is None or value == "":
+            return ["http://localhost:5173", "https://office-mate-five.vercel.app"]
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if str(v).strip()]
+        raw = str(value).strip()
+        if raw.startswith("["):
+            import json
+
+            parsed = json.loads(raw)
+            return [str(v).strip() for v in parsed if str(v).strip()]
+        return [part.strip() for part in raw.split(",") if part.strip()]
 
     # ---- Auth (employee ID + DOB) ----
     auth_secret: str = Field(default="office-mate-dev-secret-change-me")
