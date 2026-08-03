@@ -37,6 +37,15 @@ def _is_placeholder(key: Optional[str]) -> bool:
 class GeminiLLM:
     """Google Gemini via the Generative Language REST API."""
 
+    # Tried in order when the primary model is overloaded (503) or rate-limited.
+    _FALLBACKS = (
+        "gemini-flash-latest",
+        "gemini-2.0-flash",
+        "gemini-flash-lite-latest",
+        "gemini-2.0-flash-lite",
+        "gemini-3.5-flash",
+    )
+
     def __init__(self, api_key: Optional[str], model: str, max_tokens: int):
         self._api_key = api_key
         self._model = model
@@ -54,15 +63,18 @@ class GeminiLLM:
             )
         return self._api_key.strip()  # type: ignore[union-attr]
 
+    def _model_candidates(self) -> list[str]:
+        primary = self._model[len("models/") :] if self._model.startswith("models/") else self._model
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for name in (primary, *self._FALLBACKS):
+            if name and name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
+
     def generate(self, system: str, user: str) -> str:
         key = self._require_key()
-        model = self._model
-        if model.startswith("models/"):
-            model = model[len("models/") :]
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent"
-        )
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -71,38 +83,62 @@ class GeminiLLM:
                 "maxOutputTokens": self._max_tokens,
             },
         }
-        try:
-            with httpx.Client(timeout=120.0) as client:
-                resp = client.post(
-                    url,
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-goog-api-key": key,
-                    },
-                    json=payload,
+        last_err = "Google Gemini unavailable"
+        with httpx.Client(timeout=120.0) as client:
+            for model in self._model_candidates():
+                url = (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model}:generateContent"
                 )
-        except httpx.HTTPError as exc:
-            raise RuntimeError(f"Google Gemini request failed: {exc}") from exc
+                for attempt in range(3):
+                    try:
+                        resp = client.post(
+                            url,
+                            headers={
+                                "Content-Type": "application/json",
+                                "x-goog-api-key": key,
+                            },
+                            json=payload,
+                        )
+                    except httpx.HTTPError as exc:
+                        last_err = f"Google Gemini request failed: {exc}"
+                        continue
 
-        if resp.status_code in (401, 403):
-            raise LLMNotConfigured(
-                "Google rejected the API key (invalid, restricted, or expired). "
-                "Create a free key at https://aistudio.google.com/apikey and set "
-                "GOOGLE_API_KEY in backend/.env."
-            )
-        if resp.status_code >= 400:
-            raise RuntimeError(f"Google Gemini error {resp.status_code}: {resp.text[:500]}")
+                    if resp.status_code in (401, 403):
+                        raise LLMNotConfigured(
+                            "Google rejected the API key (invalid, restricted, or expired). "
+                            "Create a free key at https://aistudio.google.com/apikey and set "
+                            "GOOGLE_API_KEY in backend/.env."
+                        )
+                    if resp.status_code in (429, 503):
+                        last_err = f"Google Gemini error {resp.status_code}: {resp.text[:300]}"
+                        logger.warning(
+                            "Gemini overloaded; retrying",
+                            extra={"extra": {"model": model, "attempt": attempt + 1}},
+                        )
+                        import time
 
-        data = resp.json()
-        try:
-            parts = data["candidates"][0]["content"]["parts"]
-            text = "".join(p.get("text", "") for p in parts).strip()
-            if not text:
-                raise KeyError("empty text")
-            return text
-        except (KeyError, IndexError, TypeError) as exc:
-            # Often blocked / empty candidates when safety filters fire.
-            raise RuntimeError(f"Unexpected Google Gemini response: {data}") from exc
+                        time.sleep(1.5 * (attempt + 1))
+                        continue
+                    if resp.status_code >= 400:
+                        last_err = f"Google Gemini error {resp.status_code}: {resp.text[:500]}"
+                        break  # try next model
+
+                    data = resp.json()
+                    try:
+                        parts = data["candidates"][0]["content"]["parts"]
+                        text = "".join(p.get("text", "") for p in parts).strip()
+                        if not text:
+                            raise KeyError("empty text")
+                        self._model = model
+                        return text
+                    except (KeyError, IndexError, TypeError) as exc:
+                        last_err = f"Unexpected Google Gemini response: {data}"
+                        raise RuntimeError(last_err) from exc
+
+        raise RuntimeError(
+            f"{last_err} Google is busy — wait a minute and try again."
+        )
 
 
 class OpenAICompatibleLLM:
