@@ -1,0 +1,48 @@
+# Full stack: Qdrant + FastAPI backend + React/nginx frontend.
+# Usage:
+#   1. cp backend/.env.example backend/.env  and set ANTHROPIC_API_KEY
+#   2. docker compose up --build
+#   3. open http://localhost:8080
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "printf '' > /dev/tcp/127.0.0.1/6333"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_LOCAL_PATH: ""   # force server mode in Docker, overriding .env
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_data:/app/data      # persist registry.db + uploads
+      - model_cache:/models         # persist downloaded embedding/reranker models
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  qdrant_data:
+  backend_data:
+  model_cache:

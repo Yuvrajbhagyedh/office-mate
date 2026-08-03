@@ -1,0 +1,65 @@
+{
+  "description": "Benchmark for the RAG evaluation pipeline. 'expected_sources' lists the filename(s) that contain the answer. Set 'answerable' to false for questions the corpus cannot answer — the system must refuse these.",
+  "questions": [
+    {
+      "question": "How many days of paid annual leave do full-time employees get?",
+      "expected_answer": "Full-time employees accrue 20 days of paid annual leave per year.",
+      "expected_sources": ["solaris_energy_handbook.md"],
+      "answerable": true
+    },
+    {
+      "question": "How many unused leave days can be carried over to the next year?",
+      "expected_answer": "Up to 5 days of unused leave may be carried over.",
+      "expected_sources": ["solaris_energy_handbook.md"],
+      "answerable": true
+    },
+    {
+      "question": "What is the home-office stipend for fully remote employees?",
+      "expected_answer": "Fully remote employees receive a home-office stipend of $500 per year.",
+      "expected_sources": ["solaris_energy_handbook.md"],
+      "answerable": true
+    },
+    {
+      "question": "Below what amount are receipts not required for expenses?",
+      "expected_answer": "Business expenses under $75 do not require a receipt.",
+      "expected_sources": ["solaris_energy_handbook.md"],
+      "answerable": true
+    },
+    {
+      "question": "What HTTP status does the Atlas API return when the rate limit is exceeded?",
+      "expected_answer": "It returns HTTP 429 with a Retry-After header.",
+      "expected_sources": ["atlas_api_reference.md"],
+      "answerable": true
+    },
+    {
+      "question": "What is the default rate limit for the Atlas Payments API?",
+      "expected_answer": "The default rate limit is 100 requests per second per API key.",
+      "expected_sources": ["atlas_api_reference.md"],
+      "answerable": true
+    },
+    {
+      "question": "How are Atlas webhook payloads signed?",
+      "expected_answer": "Webhook payloads are signed with HMAC-SHA256, sent in the Atlas-Signature header.",
+      "expected_sources": ["atlas_api_reference.md"],
+      "answerable": true
+    },
+    {
+      "question": "How long does an idempotency key remain valid?",
+      "expected_answer": "Replaying a request with the same idempotency key within 24 hours returns the original response.",
+      "expected_sources": ["atlas_api_reference.md"],
+      "answerable": true
+    },
+    {
+      "question": "What is the company's parental leave policy?",
+      "expected_answer": "The provided documents do not contain enough information to answer this question.",
+      "expected_sources": [],
+      "answerable": false
+    },
+    {
+      "question": "Which cloud provider hosts the Atlas Payments API?",
+      "expected_answer": "The provided documents do not contain enough information to answer this question.",
+      "expected_sources": [],
+      "answerable": false
+    }
+  ]
+}
