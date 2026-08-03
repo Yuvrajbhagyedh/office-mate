@@ -1,28 +1,28 @@
 # syntax=docker/dockerfile:1
-FROM python:3.11-slim AS base
+# Lightweight image for free-tier hosts (no torch / sentence-transformers).
+FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/models
+    EMBEDDING_PROVIDER=google \
+    EMBEDDING_MODEL=gemini-embedding-001 \
+    EMBEDDING_DIM=768 \
+    RERANKER_ENABLED=false \
+    QDRANT_COLLECTION=documents_g
 
 WORKDIR /app
 
-# System deps kept minimal; slim image + CPU torch.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# Install CPU-only torch first to avoid pulling CUDA wheels.
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 && \
-    pip install -r requirements.txt
+RUN pip install -r requirements.txt
 
 COPY app ./app
 COPY eval ./eval
 
-# Pre-create the model cache dir (models download on first request unless baked in).
-RUN mkdir -p /models /app/data
+RUN mkdir -p /app/data
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

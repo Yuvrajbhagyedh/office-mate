@@ -1,0 +1,6 @@
+# Optional full stack (local, needs lots of RAM):
+# EMBEDDING_PROVIDER=local
+# EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+# EMBEDDING_DIM=384
+# RERANKER_ENABLED=true
+# Then: pip install sentence-transformers torch

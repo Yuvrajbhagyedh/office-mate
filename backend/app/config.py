@@ -68,13 +68,15 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(default=150, description="Overlap between adjacent chunks.")
 
     # ---- Embeddings ----
-    embedding_model: str = Field(default="BAAI/bge-small-en-v1.5")
+    # google = Gemini Embedding API (low RAM, for free Render)
+    # local  = sentence-transformers (needs >1.5GB RAM)
+    embedding_provider: str = Field(default="google")
+    embedding_model: str = Field(default="gemini-embedding-001")
     embedding_device: str = Field(default="cpu")
-    # bge models want an instruction prefix on the *query* side only.
     embedding_query_prefix: str = Field(
         default="Represent this sentence for searching relevant passages: "
     )
-    embedding_dim: int = Field(default=384)
+    embedding_dim: int = Field(default=768)
 
     # ---- Vector store (Qdrant) ----
     # Two modes:
@@ -84,7 +86,7 @@ class Settings(BaseSettings):
     qdrant_url: str = Field(default="http://localhost:6333")
     qdrant_local_path: str | None = Field(default=None)
     qdrant_api_key: str | None = Field(default=None)
-    qdrant_collection: str = Field(default="documents")
+    qdrant_collection: str = Field(default="documents_g")
 
     # ---- Retrieval ----
     vector_top_k: int = Field(default=20, description="Candidates pulled from vector search.")
@@ -92,6 +94,8 @@ class Settings(BaseSettings):
     rrf_k: int = Field(default=60, description="Reciprocal Rank Fusion constant.")
     rerank_top_n: int = Field(default=5, description="Chunks kept after cross-encoder rerank.")
     reranker_model: str = Field(default="cross-encoder/ms-marco-MiniLM-L-6-v2")
+    # Off by default so free-tier hosts don't load torch cross-encoders.
+    reranker_enabled: bool = Field(default=False)
     min_rerank_score: float = Field(
         default=-6.0,
         description="Below this cross-encoder score a chunk is treated as irrelevant. "

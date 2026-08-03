@@ -1,18 +1,7 @@
-"""Cross-encoder reranking.
+"""Reranking.
 
-The hybrid retriever is a *bi-encoder* stage: fast, but it scores query and
-passage independently. A cross-encoder reads the (query, passage) pair jointly
-and produces a far more accurate relevance score — at higher cost, which is why
-we only run it on the ~40 fused candidates, not the whole corpus.
-
-Reranking is where most of the end-to-end quality gain comes from: it pushes
-the genuinely-relevant chunk to the top and filters out topically-adjacent but
-unhelpful passages, which in turn reduces hallucination because the LLM sees a
-tighter, higher-signal context.
-
-Chunks scoring below `min_rerank_score` are dropped entirely. If nothing clears
-the bar, we return an empty list and the pipeline tells the model there is no
-supporting evidence — the core anti-fabrication guarantee.
+Cross-encoder mode needs sentence-transformers/torch (heavy).
+Identity mode reuses hybrid fused scores — fits free-tier hosts.
 """
 from __future__ import annotations
 
@@ -26,9 +15,10 @@ logger = get_logger(__name__)
 
 
 class Reranker:
-    def __init__(self, model_name: str, device: str):
+    def __init__(self, model_name: str, device: str, enabled: bool):
         self._model_name = model_name
         self._device = device
+        self._enabled = enabled
         self._model = None
         self._lock = threading.Lock()
 
@@ -48,6 +38,19 @@ class Reranker:
     def rerank(self, query: str, candidates: List[dict], top_n: int, min_score: float) -> List[dict]:
         if not candidates:
             return []
+
+        if not self._enabled:
+            # Keep hybrid-fusion order; treat fused_score as rerank_score.
+            ranked = sorted(
+                candidates,
+                key=lambda c: float(c.get("fused_score") or c.get("vector_score") or 0.0),
+                reverse=True,
+            )
+            out = ranked[:top_n]
+            for c in out:
+                c["rerank_score"] = float(c.get("fused_score") or c.get("vector_score") or 0.0)
+            return out
+
         model = self._ensure_model()
         pairs = [(query, c["text"]) for c in candidates]
         scores = model.predict(pairs, show_progress_bar=False)
@@ -58,4 +61,8 @@ class Reranker:
         return kept[:top_n]
 
 
-reranker = Reranker(model_name=settings.reranker_model, device=settings.embedding_device)
+reranker = Reranker(
+    model_name=settings.reranker_model,
+    device=settings.embedding_device,
+    enabled=settings.reranker_enabled,
+)
