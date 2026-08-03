@@ -1,6 +1,18 @@
 const TOKEN_KEY = "office_mate_token";
 const USER_KEY = "office_mate_user";
 
+// In production (Vercel), call Render directly so long /api/ask requests
+// are not cut off by the Vercel rewrite proxy (which shows up as 502).
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
+    ? "https://office-mate.onrender.com"
+    : "");
+
+function url(path) {
+  return `${API_BASE}${path}`;
+}
+
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -41,7 +53,7 @@ async function handle(res) {
     } catch {
       /* non-JSON */
     }
-    throw new Error(detail);
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return res.status === 204 ? null : res.json();
 }
@@ -56,20 +68,20 @@ function authHeaders(extra = {}) {
 
 export const api = {
   login: (employeeId, dob) =>
-    fetch("/api/auth/login", {
+    fetch(url("/api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ employee_id: employeeId, dob }),
     }).then(handle),
 
-  me: () => fetch("/api/auth/me", { headers: authHeaders() }).then(handle),
+  me: () => fetch(url("/api/auth/me"), { headers: authHeaders() }).then(handle),
 
-  listDocuments: () => fetch("/api/documents", { headers: authHeaders() }).then(handle),
+  listDocuments: () => fetch(url("/api/documents"), { headers: authHeaders() }).then(handle),
 
   uploadDocument: (file) => {
     const form = new FormData();
     form.append("file", file);
-    return fetch("/api/documents", {
+    return fetch(url("/api/documents"), {
       method: "POST",
       headers: authHeaders(),
       body: form,
@@ -77,13 +89,13 @@ export const api = {
   },
 
   deleteDocument: (id) =>
-    fetch(`/api/documents/${id}`, {
+    fetch(url(`/api/documents/${id}`), {
       method: "DELETE",
       headers: authHeaders(),
     }).then(handle),
 
   ask: (question, documentIds) =>
-    fetch("/api/ask", {
+    fetch(url("/api/ask"), {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
@@ -92,5 +104,5 @@ export const api = {
       }),
     }).then(handle),
 
-  health: () => fetch("/health").then(handle),
+  health: () => fetch(url("/health")).then(handle),
 };
