@@ -24,8 +24,10 @@ def _ext(filename: str) -> str:
     return filename[dot:].lower() if dot != -1 else ""
 
 
+# Plain `def`: ingestion makes blocking embedding calls, so it runs in the
+# threadpool rather than blocking the event loop for other requests.
 @router.post("", response_model=UploadResponse, status_code=201)
-async def upload_document(
+def upload_document(
     _: Annotated[UserRecord, Depends(require_admin)],
     file: UploadFile = File(...),
 ) -> UploadResponse:
@@ -37,7 +39,7 @@ async def upload_document(
             detail=f"Unsupported type '{ext}'. Allowed: {sorted(SUPPORTED_EXTENSIONS)}",
         )
 
-    data = await file.read()
+    data = file.file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(data) > settings.max_upload_bytes:
@@ -65,7 +67,7 @@ async def list_documents(_: Annotated[UserRecord, Depends(require_admin)]) -> Do
 
 
 @router.delete("/{document_id}", status_code=204, response_class=Response)
-async def delete_document(
+def delete_document(
     document_id: str,
     _: Annotated[UserRecord, Depends(require_admin)],
 ) -> Response:

@@ -16,8 +16,11 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api", tags=["query"])
 
 
+# Plain `def` (not async): the pipeline makes blocking Gemini/Qdrant calls, so
+# FastAPI must run it in its threadpool instead of on the event loop — otherwise
+# one slow LLM call freezes every other request.
 @router.post("/ask", response_model=AskResponse)
-async def ask(
+def ask(
     request: AskRequest,
     _: Annotated[UserRecord, Depends(get_current_user)],
 ) -> AskResponse:
