@@ -5,6 +5,7 @@ Supports:
   * groq      — free-tier friendly (https://console.groq.com/keys)
   * xai       — Grok models (https://console.x.ai/)
   * anthropic — Claude (paid)
+  * openai    — any OpenAI-compatible endpoint via LLM_BASE_URL + LLM_API_KEY
 
 All providers expose `generate(system, user) -> str` so the rest of the
 pipeline stays provider-agnostic.
@@ -288,6 +289,16 @@ def build_llm():
             key_hint="Get a key at https://console.x.ai/ and set XAI_API_KEY in backend/.env.",
         )
 
+    if provider in {"openai", "custom", "explabs"}:
+        return OpenAICompatibleLLM(
+            api_key=settings.llm_api_key,
+            model=settings.llm_model or "gemini-flash-latest",
+            max_tokens=settings.llm_max_tokens,
+            base_url=settings.llm_base_url or "https://api.openai.com/v1",
+            provider_name="OpenAI-compatible endpoint",
+            key_hint="Set LLM_API_KEY and LLM_BASE_URL in backend/.env.",
+        )
+
     if provider == "groq":
         return OpenAICompatibleLLM(
             api_key=settings.groq_api_key or settings.llm_api_key,
@@ -299,7 +310,8 @@ def build_llm():
         )
 
     raise LLMNotConfigured(
-        f"Unknown LLM_PROVIDER={provider!r}. Use google, groq, xai, or anthropic."
+        f"Unknown LLM_PROVIDER={provider!r}. "
+        "Use google, groq, xai, anthropic, or openai (any OpenAI-compatible base URL)."
     )
 
 

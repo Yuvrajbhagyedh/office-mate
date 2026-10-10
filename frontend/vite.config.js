@@ -9,8 +9,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Use 127.0.0.1 (not localhost) so Windows IPv6 (::1) doesn't break the proxy.
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/health": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:8001", changeOrigin: true },
+      "/health": { target: "http://127.0.0.1:8001", changeOrigin: true },
     },
   },
 });
