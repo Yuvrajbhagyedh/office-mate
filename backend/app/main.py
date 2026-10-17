@@ -6,6 +6,7 @@ collection exists, rebuild the BM25 index from persisted chunks).
 """
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -19,13 +20,21 @@ from .api import auth, documents, health, query
 from .config import settings
 from .core.auth import seed_users
 from .core.embeddings import embedder
-from .core.pipeline import refresh_bm25
+from .core.pipeline import refresh_bm25, seed_documents
+from .deps import registry
 from .core.vectorstore import vector_store
 from .logging_config import configure_logging, get_logger, request_id_ctx
 from .metrics import REQUEST_LATENCY, REQUESTS_TOTAL
 
 configure_logging(settings.log_level)
 logger = get_logger(__name__)
+
+
+def _seed_in_background() -> None:
+    try:
+        seed_documents(settings.seed_docs_dir)
+    except Exception:  # noqa: BLE001
+        logger.exception("Seeding failed")
 
 
 @asynccontextmanager
@@ -37,6 +46,14 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.warning("Could not eagerly load embedding model at startup.")
     vector_store.ensure_collection()
+    if registry.counts()[0] == 0:
+        # Registry is the source of truth: if it is empty (fresh disk), clear
+        # any vectors left behind, then load the seed documents in the
+        # background so the port opens immediately and health checks pass.
+        vector_store.reset()
+        threading.Thread(
+            target=_seed_in_background, name="seed-docs", daemon=True
+        ).start()
     refresh_bm25()
     logger.info("Startup complete")
     yield

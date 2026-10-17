@@ -73,6 +73,12 @@ So we use the classic two-stage design: cheap retrieval narrows thousands of
 chunks to ~40 candidates; the expensive cross-encoder reranks *those* and keeps
 the top `RERANK_TOP_N` (default 5).
 
+On free hosts (512 MB RAM) the cross-encoder is switched off
+(`RERANKER_ENABLED=false`) because torch does not fit. The pipeline then keeps
+the fused order but applies an evidence gate instead: at least one chunk must
+reach `MIN_VECTOR_SCORE` cosine similarity, weaker vector hits are dropped, and
+if nothing qualifies the model is never called and the answer is a refusal.
+
 Reranking is where most end-to-end quality comes from. It matters for
 groundedness specifically: by tightening the context to only the highest-signal
 chunks, the LLM sees less distracting, topically-adjacent text — which is a
