@@ -118,6 +118,8 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=2048)
     # Total time budget for one answer, across all retries and fallback models.
     llm_timeout_seconds: float = Field(default=30.0)
+    # Gemini only: thinking token budget. 0 = off (fastest); negative = model default.
+    llm_thinking_budget: int = Field(default=0)
     llm_base_url: str | None = Field(
         default=None,
         description="Override OpenAI-compatible base URL (groq/xai).",
