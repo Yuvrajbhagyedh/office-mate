@@ -67,6 +67,16 @@ class VectorStore:
             except Exception:  # noqa: BLE001
                 logger.info("Skipping payload index (embedded mode)")
 
+    def reset(self) -> None:
+        """Drop and recreate the collection. Used when the registry (the source
+        of truth) is empty, so stale vectors from a wiped disk or an external
+        Qdrant never outnumber real chunks in search results."""
+        existing = {c.name for c in self._client.get_collections().collections}
+        if self._collection in existing:
+            logger.info("Resetting Qdrant collection", extra={"extra": {"collection": self._collection}})
+            self._client.delete_collection(collection_name=self._collection)
+        self.ensure_collection()
+
     def upsert(self, chunk_ids: List[str], vectors: List[List[float]], payloads: List[dict]) -> None:
         points = [
             qm.PointStruct(id=cid, vector=vec, payload=payload)
