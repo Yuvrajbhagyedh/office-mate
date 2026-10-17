@@ -21,6 +21,7 @@ RUN pip install -r requirements.txt
 
 COPY app ./app
 COPY eval ./eval
+COPY seed_docs ./seed_docs
 
 RUN mkdir -p /app/data
 

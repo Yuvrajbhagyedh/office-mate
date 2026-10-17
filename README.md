@@ -35,10 +35,10 @@ Ask → Hybrid retrieve (BM25 + vector, RRF) → Cross-encoder rerank
 | API          | FastAPI                                                   |
 | Frontend     | React + Vite                                              |
 | Vector DB    | Qdrant                                                    |
-| Embeddings   | `BAAI/bge-small-en-v1.5` (local, sentence-transformers)   |
-| Reranker     | `cross-encoder/ms-marco-MiniLM-L-6-v2` (local)            |
+| Embeddings   | Gemini `gemini-embedding-001` (default, batched API) or `BAAI/bge-small-en-v1.5` (local) |
+| Reranker     | `cross-encoder/ms-marco-MiniLM-L-6-v2` (optional, local); off on free hosts, where a vector-score evidence gate is used instead |
 | Keyword      | BM25 (`rank-bm25`)                                        |
-| LLM          | Claude (Anthropic)                                        |
+| LLM          | Gemini (default), Claude, Groq, xAI or any OpenAI-compatible API |
 | Registry     | SQLite                                                    |
 | Metrics      | Prometheus client                                         |
 

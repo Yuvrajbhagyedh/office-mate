@@ -12,6 +12,7 @@ pipeline stays provider-agnostic.
 """
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import httpx
@@ -47,10 +48,16 @@ class GeminiLLM:
         "gemini-3.5-flash",
     )
 
-    def __init__(self, api_key: Optional[str], model: str, max_tokens: int):
+    # Attempts per model before moving to the next fallback.
+    _ATTEMPTS_PER_MODEL = 2
+
+    def __init__(
+        self, api_key: Optional[str], model: str, max_tokens: int, timeout_seconds: float = 30.0
+    ):
         self._api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
+        self._timeout = timeout_seconds
 
     @property
     def model(self) -> str:
@@ -84,14 +91,23 @@ class GeminiLLM:
                 "maxOutputTokens": self._max_tokens,
             },
         }
+        # One deadline for the whole answer. Before this, 6 models x 3 attempts
+        # with 120s timeouts and back-off sleeps could hold a request for minutes.
+        deadline = time.monotonic() + self._timeout
         last_err = "Google Gemini unavailable"
-        with httpx.Client(timeout=120.0) as client:
+        with httpx.Client() as client:
             for model in self._model_candidates():
                 url = (
                     "https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model}:generateContent"
                 )
-                for attempt in range(3):
+                for attempt in range(self._ATTEMPTS_PER_MODEL):
+                    remaining = deadline - time.monotonic()
+                    if remaining < 1.0:
+                        raise RuntimeError(
+                            f"{last_err} Google is busy — timed out after "
+                            f"{self._timeout:.0f}s; try again in a moment."
+                        )
                     try:
                         resp = client.post(
                             url,
@@ -100,6 +116,7 @@ class GeminiLLM:
                                 "x-goog-api-key": key,
                             },
                             json=payload,
+                            timeout=remaining,
                         )
                     except httpx.HTTPError as exc:
                         last_err = f"Google Gemini request failed: {exc}"
@@ -117,9 +134,9 @@ class GeminiLLM:
                             "Gemini overloaded; retrying",
                             extra={"extra": {"model": model, "attempt": attempt + 1}},
                         )
-                        import time
-
-                        time.sleep(1.5 * (attempt + 1))
+                        pause = min(1.0 * (attempt + 1), deadline - time.monotonic() - 1.0)
+                        if pause > 0:
+                            time.sleep(pause)
                         continue
                     if resp.status_code >= 400:
                         last_err = f"Google Gemini error {resp.status_code}: {resp.text[:500]}"
@@ -153,6 +170,7 @@ class OpenAICompatibleLLM:
         base_url: str,
         provider_name: str,
         key_hint: str,
+        timeout_seconds: float = 30.0,
     ):
         self._api_key = api_key
         self._model = model
@@ -160,6 +178,7 @@ class OpenAICompatibleLLM:
         self._base_url = base_url.rstrip("/")
         self._provider_name = provider_name
         self._key_hint = key_hint
+        self._timeout = timeout_seconds
 
     @property
     def model(self) -> str:
@@ -186,7 +205,7 @@ class OpenAICompatibleLLM:
             "temperature": 0,
         }
         try:
-            with httpx.Client(timeout=120.0) as client:
+            with httpx.Client(timeout=self._timeout) as client:
                 resp = client.post(
                     url,
                     headers={
@@ -269,6 +288,7 @@ def build_llm():
             api_key=settings.google_api_key or settings.gemini_api_key or settings.llm_api_key,
             model=settings.llm_model or "gemini-flash-latest",
             max_tokens=settings.llm_max_tokens,
+            timeout_seconds=settings.llm_timeout_seconds,
         )
 
     if provider == "anthropic":
@@ -286,6 +306,7 @@ def build_llm():
             max_tokens=settings.llm_max_tokens,
             base_url=settings.llm_base_url or "https://api.x.ai/v1",
             provider_name="xAI (Grok)",
+            timeout_seconds=settings.llm_timeout_seconds,
             key_hint="Get a key at https://console.x.ai/ and set XAI_API_KEY in backend/.env.",
         )
 
@@ -296,6 +317,7 @@ def build_llm():
             max_tokens=settings.llm_max_tokens,
             base_url=settings.llm_base_url or "https://api.openai.com/v1",
             provider_name="OpenAI-compatible endpoint",
+            timeout_seconds=settings.llm_timeout_seconds,
             key_hint="Set LLM_API_KEY and LLM_BASE_URL in backend/.env.",
         )
 
@@ -306,6 +328,7 @@ def build_llm():
             max_tokens=settings.llm_max_tokens,
             base_url=settings.llm_base_url or "https://api.groq.com/openai/v1",
             provider_name="Groq",
+            timeout_seconds=settings.llm_timeout_seconds,
             key_hint="Get a free key at https://console.groq.com/keys and set GROQ_API_KEY in backend/.env.",
         )
 

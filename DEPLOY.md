@@ -22,7 +22,8 @@ Do **not** upload `backend/.env`. Put secrets only in the host dashboard.
 | `GOOGLE_API_KEY` | your real Google AI Studio key |
 | `LLM_PROVIDER` | `google` |
 | `LLM_MODEL` | `gemini-flash-latest` |
-| `AUTH_SECRET` | any long random string |
+| `AUTH_SECRET` | any long random string (required — the default is public) |
+| `ENVIRONMENT` | `production` |
 | `QDRANT_LOCAL_PATH` | `./data/qdrant` |
 | `CORS_ORIGINS` | `["https://YOUR-VERCEL-URL.vercel.app"]` (update after Step 2) |
 
@@ -89,7 +90,33 @@ Open the Vercel URL:
 | Employee | `EMP1001` | `1995-06-20` |
 | Admin | `ADMIN001` | `1990-01-15` |
 
-Admin uploads company docs; employees ask leave/HR questions.
+Employees ask leave/HR questions. The site starts with the documents in
+`backend/seed_docs/` already loaded (see below).
+
+---
+
+## Keeping documents on the free plan
+
+Render's free plan has **no persistent disk**: every restart or redeploy wipes
+`backend/data/`, including documents an admin uploaded.
+
+- **Permanent documents:** put them in `backend/seed_docs/` and push. Whenever
+  the server starts with an empty database it loads every PDF, DOCX, TXT and
+  Markdown file in that folder. Replace `sample_hr_policy.md` with your real
+  policies.
+- **Admin uploads** still last only until the next restart. To keep them, use
+  a paid Render disk mounted at `/app/data`, or move storage off the
+  container (Qdrant Cloud free tier via `QDRANT_URL` + `QDRANT_API_KEY`, and a
+  hosted database instead of SQLite).
+
+## Keeping the backend awake
+
+Render's free plan sleeps after ~15 minutes idle, and the next request takes
+about 30 seconds. `.github/workflows/keep-warm.yml` pings `/health` every 10
+minutes. If your backend URL is not `https://office-mate.onrender.com`, set a
+repository variable `BACKEND_URL` (GitHub → Settings → Secrets and variables →
+Actions → Variables). GitHub pauses scheduled workflows after 60 days without
+repo activity; re-enable it from the Actions tab.
 
 ---
 
@@ -97,5 +124,7 @@ Admin uploads company docs; employees ask leave/HR questions.
 
 - **API errors / CORS** → check `CORS_ORIGINS` matches Vercel exactly (`https`, no slash)  
 - **401 on ask** → log in again  
-- **Slow first load** → Render free tier waking up + model download  
+- **Slow first load** → Render free tier waking up (see "Keeping the backend awake")  
+- **Every answer says the documents don't contain the answer** → check `/health`
+  shows documents > 0; if not, add files to `backend/seed_docs/`  
 - **Blank page** → confirm Vercel Root Directory is `frontend`

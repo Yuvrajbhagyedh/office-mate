@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     upload_dir: str = Field(default="./data/uploads")
     registry_db: str = Field(default="./data/registry.db")
     max_upload_mb: int = Field(default=25)
+    # Files here are ingested on startup whenever the registry is empty. Free
+    # hosts (Render) wipe the disk on every restart, so this is how the live
+    # site keeps its documents.
+    seed_docs_dir: str = Field(default="./seed_docs")
 
     # ---- Chunking ----
     chunk_size: int = Field(default=900, description="Target chunk size in characters.")
@@ -77,6 +81,8 @@ class Settings(BaseSettings):
         default="Represent this sentence for searching relevant passages: "
     )
     embedding_dim: int = Field(default=768)
+    # Google batchEmbedContents accepts at most 100 texts per request.
+    embedding_batch_size: int = Field(default=100)
 
     # ---- Vector store (Qdrant) ----
     # Two modes:
@@ -101,12 +107,17 @@ class Settings(BaseSettings):
         description="Below this cross-encoder score a chunk is treated as irrelevant. "
         "If nothing clears the bar, the LLM is told there is no evidence.",
     )
+    # Evidence gate used when the cross-encoder is disabled: chunks whose cosine
+    # similarity to the question is below this are treated as irrelevant.
+    min_vector_score: float = Field(default=0.5)
 
     # ---- LLM ----
     # Providers: google (Gemini free), groq, xai (Grok), anthropic (Claude)
     llm_provider: str = Field(default="google")
     llm_model: str = Field(default="gemini-flash-latest")
     llm_max_tokens: int = Field(default=2048)
+    # Total time budget for one answer, across all retries and fallback models.
+    llm_timeout_seconds: float = Field(default=30.0)
     llm_base_url: str | None = Field(
         default=None,
         description="Override OpenAI-compatible base URL (groq/xai).",
