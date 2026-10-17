@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 import time
+import uuid
+from pathlib import Path
 from typing import List, Optional
 
 from ..config import settings
@@ -94,6 +96,41 @@ def ingest_document(doc_id: str, filename: str, data: bytes) -> None:
         logger.exception("Ingestion failed", extra={"extra": {"document_id": doc_id}})
         registry.mark_failed(doc_id, str(exc))
         raise
+
+
+def seed_documents(directory: str) -> int:
+    """Ingest every supported file in `directory` that is not already in the
+    registry. Returns how many documents were added.
+
+    Free hosts like Render wipe the disk on restart; keeping the company's
+    documents in the repo and seeding them on startup means the live site
+    never comes up empty.
+    """
+    folder = Path(directory)
+    if not folder.is_dir():
+        logger.info("No seed folder", extra={"extra": {"path": str(folder)}})
+        return 0
+
+    existing = {d.filename for d in registry.list_documents()}
+    added = 0
+    for path in sorted(folder.iterdir()):
+        ext = path.suffix.lower()
+        if not path.is_file() or ext not in ingestion.SUPPORTED_EXTENSIONS:
+            continue
+        if path.name in existing:
+            continue
+        data = path.read_bytes()
+        if not data:
+            continue
+        doc_id = str(uuid.uuid4())
+        registry.create_document(doc_id, path.name, ext.lstrip("."), len(data))
+        try:
+            ingest_document(doc_id, path.name, data)
+            added += 1
+        except Exception:  # noqa: BLE001 — logged in ingest_document; keep seeding the rest
+            continue
+    logger.info("Seeding finished", extra={"extra": {"added": added, "path": str(folder)}})
+    return added
 
 
 def delete_document(doc_id: str) -> bool:
