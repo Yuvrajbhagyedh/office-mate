@@ -178,3 +178,46 @@ def test_seed_documents_ingests_new_supported_files(tmp_path, monkeypatch):
 
 def test_seed_documents_missing_folder_is_a_no_op(tmp_path):
     assert pipeline.seed_documents(str(tmp_path / "nope")) == 0
+
+
+# ---- Gemini thinking off ----
+
+def test_gemini_turns_thinking_off_by_default(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content)["generationConfig"])
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+
+    _patch_gemini_http(monkeypatch, handler)
+    GeminiLLM(api_key="test-key", model="gemini-flash-latest", max_tokens=10).generate("s", "u")
+    assert seen[0]["thinkingConfig"] == {"thinkingBudget": 0}
+
+
+def test_gemini_retries_without_thinking_config_when_unsupported(monkeypatch):
+    seen = []
+
+    def handler(request):
+        config = json.loads(request.content)["generationConfig"]
+        seen.append("thinkingConfig" in config)
+        if "thinkingConfig" in config:
+            return httpx.Response(400, text='{"error": {"message": "Thinking is not supported by this model."}}')
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+
+    _patch_gemini_http(monkeypatch, handler)
+    llm = GeminiLLM(api_key="test-key", model="gemini-2.0-flash", max_tokens=10)
+    assert llm.generate("s", "u") == "ok"
+    assert seen == [True, False]
+    assert llm.model == "gemini-2.0-flash"
+
+
+def test_gemini_negative_budget_leaves_model_default(monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content)["generationConfig"])
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "ok"}]}}]})
+
+    _patch_gemini_http(monkeypatch, handler)
+    GeminiLLM(api_key="test-key", model="gemini-flash-latest", max_tokens=10, thinking_budget=-1).generate("s", "u")
+    assert "thinkingConfig" not in seen[0]

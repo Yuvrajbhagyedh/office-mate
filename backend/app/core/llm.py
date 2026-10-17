@@ -52,12 +52,21 @@ class GeminiLLM:
     _ATTEMPTS_PER_MODEL = 2
 
     def __init__(
-        self, api_key: Optional[str], model: str, max_tokens: int, timeout_seconds: float = 30.0
+        self,
+        api_key: Optional[str],
+        model: str,
+        max_tokens: int,
+        timeout_seconds: float = 30.0,
+        thinking_budget: int = 0,
     ):
         self._api_key = api_key
         self._model = model
         self._max_tokens = max_tokens
         self._timeout = timeout_seconds
+        # Flash models "think" before answering by default, which added ~10s per
+        # answer. Short grounded answers from 5 chunks don't need it, so the
+        # default budget is 0 (off). A negative value leaves the model default.
+        self._thinking_budget = thinking_budget
 
     @property
     def model(self) -> str:
@@ -81,16 +90,21 @@ class GeminiLLM:
                 ordered.append(name)
         return ordered
 
-    def generate(self, system: str, user: str) -> str:
-        key = self._require_key()
-        payload = {
+    def _payload(self, system: str, user: str, with_thinking_config: bool) -> dict:
+        generation_config: dict = {
+            "temperature": 0,
+            "maxOutputTokens": self._max_tokens,
+        }
+        if with_thinking_config:
+            generation_config["thinkingConfig"] = {"thinkingBudget": self._thinking_budget}
+        return {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user}]}],
-            "generationConfig": {
-                "temperature": 0,
-                "maxOutputTokens": self._max_tokens,
-            },
+            "generationConfig": generation_config,
         }
+
+    def generate(self, system: str, user: str) -> str:
+        key = self._require_key()
         # One deadline for the whole answer. Before this, 6 models x 3 attempts
         # with 120s timeouts and back-off sleeps could hold a request for minutes.
         deadline = time.monotonic() + self._timeout
@@ -101,6 +115,9 @@ class GeminiLLM:
                     "https://generativelanguage.googleapis.com/v1beta/models/"
                     f"{model}:generateContent"
                 )
+                # Models without thinking support reject thinkingConfig; such a
+                # model is retried once without it.
+                use_thinking_config = self._thinking_budget >= 0
                 for attempt in range(self._ATTEMPTS_PER_MODEL):
                     remaining = deadline - time.monotonic()
                     if remaining < 1.0:
@@ -115,7 +132,7 @@ class GeminiLLM:
                                 "Content-Type": "application/json",
                                 "x-goog-api-key": key,
                             },
-                            json=payload,
+                            json=self._payload(system, user, use_thinking_config),
                             timeout=remaining,
                         )
                     except httpx.HTTPError as exc:
@@ -137,6 +154,13 @@ class GeminiLLM:
                         pause = min(1.0 * (attempt + 1), deadline - time.monotonic() - 1.0)
                         if pause > 0:
                             time.sleep(pause)
+                        continue
+                    if (
+                        resp.status_code == 400
+                        and use_thinking_config
+                        and "thinking" in resp.text.lower()
+                    ):
+                        use_thinking_config = False
                         continue
                     if resp.status_code >= 400:
                         last_err = f"Google Gemini error {resp.status_code}: {resp.text[:500]}"
@@ -289,6 +313,7 @@ def build_llm():
             model=settings.llm_model or "gemini-flash-latest",
             max_tokens=settings.llm_max_tokens,
             timeout_seconds=settings.llm_timeout_seconds,
+            thinking_budget=settings.llm_thinking_budget,
         )
 
     if provider == "anthropic":
