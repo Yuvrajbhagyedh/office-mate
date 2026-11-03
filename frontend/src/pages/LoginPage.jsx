@@ -1,11 +1,32 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { api, setSession } from "../api.js";
+
+// Free-tier Render sleeps after ~15 min idle; the first request then takes
+// 30-60s to wake it. Pinging /health as soon as the login page loads starts
+// that wake-up during typing instead of after Continue is clicked.
+const WAKING_HINT_DELAY_MS = 4000;
 
 export default function LoginPage({ onLoggedIn }) {
   const [employeeId, setEmployeeId] = useState("");
   const [dob, setDob] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [waking, setWaking] = useState(false);
+
+  useEffect(() => {
+    let settled = false;
+    const hintTimer = setTimeout(() => {
+      if (!settled) setWaking(true);
+    }, WAKING_HINT_DELAY_MS);
+    api
+      .health()
+      .catch(() => {})
+      .finally(() => {
+        settled = true;
+        setWaking(false);
+      });
+    return () => clearTimeout(hintTimer);
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -55,6 +76,9 @@ export default function LoginPage({ onLoggedIn }) {
               required
             />
           </label>
+          {waking && !error && (
+            <p className="login-waking">Waking up the server — first sign-in can take up to a minute.</p>
+          )}
           {error && <p className="error-box">{error}</p>}
           <button type="submit" disabled={busy || !employeeId.trim() || !dob}>
             {busy ? "Signing in…" : "Continue"}
